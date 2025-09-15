@@ -54,7 +54,7 @@
 #define LiftCutoff_Tune2  0x65
 
 //Set this to what pin your "INT0" hardware interrupt feature is on
-#define Motion_Interrupt_Pin 8 // Teensy 4.0 INT0 is pin 2
+#define Motion_Interrupt_Pin 8 // Teensy 4.0 INT0 is pin 8
 
 const int ncs = 10;  //This is the SPI "slave select" pin that the sensor is hooked up to
 
@@ -77,6 +77,9 @@ void dispRegisters(void);
 // Forward declaration for two's complement conversion function
 int convTwosComp(int b);
 
+// Forward declaration for adns_read_reg function
+byte adns_read_reg(byte reg_addr);
+
 //Be sure to add the SROM file into this sketch via "Sketch->Add File"
 extern const unsigned short firmware_length;
 extern const unsigned char firmware_data[];
@@ -84,7 +87,11 @@ extern const unsigned char firmware_data[];
 void setup() {
   Serial.begin(9600);
   
-  pinMode (ncs, OUTPUT);
+  pinMode(ncs, OUTPUT);
+  // Set Teensy pin 6 as OUTPUT and HIGH for PMW3389 RST
+  const int rstPin = 6;
+  pinMode(rstPin, OUTPUT);
+  digitalWrite(rstPin, HIGH); // Hold RST high for normal operation
   
   pinMode(Motion_Interrupt_Pin, INPUT);
   digitalWrite(Motion_Interrupt_Pin, HIGH);
@@ -98,7 +105,10 @@ void setup() {
   
   delay(5000);
   
-  dispRegisters();
+  // Print Product_ID to confirm sensor communication
+  byte product_id = adns_read_reg(Product_ID);
+  Serial.print("PMW3389 Product_ID: 0x");
+  Serial.println(product_id, HEX);
   initComplete=9;
 
 }
@@ -249,13 +259,26 @@ int convTwosComp(int b){
   }
   
 
+unsigned long lastDebugTime = 0;
+unsigned long lastMotionTime = 0;
+
 void loop() {
+  unsigned long now = millis();
   if(movementflag){
-    Serial.print("Total x displacement: ");
-    Serial.print(total_x);
-    Serial.print(" | Total y displacement: ");
-    Serial.println(total_y);
+    int dx = convTwosComp((int)adns_read_reg(Delta_X_L));
+    int dy = convTwosComp((int)adns_read_reg(Delta_Y_L));
+    Serial.print("Motion detected! CPI counts - X: ");
+    Serial.print(dx);
+    Serial.print(", Y: ");
+    Serial.println(dy);
     movementflag=0;
+    lastMotionTime = now;
+  }
+  // Print debug line every 10 seconds if no motion detected
+  if (now - lastDebugTime > 10000) {
+    if (now - lastMotionTime > 10000) {
+      Serial.println("No motion detected in last 10 seconds.");
+    }
+    lastDebugTime = now;
   }
 }
-
