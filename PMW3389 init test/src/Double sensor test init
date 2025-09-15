@@ -1,0 +1,297 @@
+#include <SPI.h>
+#include <pgmspace.h>
+#include "SROM.h"
+#include "Mouse.h"
+// Registers
+#define Product_ID  0x00
+#define Revision_ID 0x01
+#define Motion  0x02
+#define Delta_X_L 0x03
+#define Delta_X_H 0x04
+#define Delta_Y_L 0x05
+#define Delta_Y_H 0x06
+#define SQUAL 0x07
+#define Raw_Data_Sum  0x08
+#define Maximum_Raw_data  0x09
+#define Minimum_Raw_data  0x0A
+#define Shutter_Lower 0x0B
+#define Shutter_Upper 0x0C
+#define Control 0x0D
+#define Config1 0x0F
+#define Config2 0x10
+#define Angle_Tune  0x11
+#define Frame_Capture 0x12
+#define SROM_Enable 0x13
+#define Run_Downshift 0x14
+#define Rest1_Rate_Lower  0x15
+#define Rest1_Rate_Upper  0x16
+#define Rest1_Downshift 0x17
+#define Rest2_Rate_Lower  0x18
+#define Rest2_Rate_Upper  0x19
+#define Rest2_Downshift 0x1A
+#define Rest3_Rate_Lower  0x1B
+#define Rest3_Rate_Upper  0x1C
+#define Observation 0x24
+#define Data_Out_Lower  0x25
+#define Data_Out_Upper  0x26
+#define Raw_Data_Dump 0x29
+#define SROM_ID 0x2A
+#define Min_SQ_Run  0x2B
+#define Raw_Data_Threshold  0x2C
+#define Config5 0x2F
+#define Power_Up_Reset  0x3A
+#define Shutdown  0x3B
+#define Inverse_Product_ID  0x3F
+#define LiftCutoff_Tune3  0x41
+#define Angle_Snap  0x42
+#define LiftCutoff_Tune1  0x4A
+#define Motion_Burst  0x50
+#define LiftCutoff_Tune_Timeout 0x58
+#define LiftCutoff_Tune_Min_Length  0x5A
+#define SROM_Load_Burst 0x62
+#define Lift_Config 0x63
+#define Raw_Data_Burst  0x64
+#define LiftCutoff_Tune2  0x65
+
+//Set this to what pin your "INT0" hardware interrupt feature is on
+
+#define Motion_Interrupt_Pin_1 2 // Sensor 1 MT (original)
+#define ncs_1 10                 // Sensor 1 SS (original)
+#define Motion_Interrupt_Pin_2 8 // Sensor 2 MT (new)
+#define ncs_2 9                  // Sensor 2 SS (new)
+
+byte initComplete=0;
+volatile byte movementflag_1=0;
+volatile byte movementflag_2=0;
+long total_x_1 = 0;
+long total_y_1 = 0;
+long total_x_2 = 0;
+long total_y_2 = 0;
+
+// Forward declaration for interrupt handlers
+void UpdatePointer1(void);
+void UpdatePointer2(void);
+
+// Forward declaration for startup function
+void performStartup(void);
+
+// Forward declaration for register display function
+void dispRegisters(void);
+
+// Forward declaration for two's complement conversion function
+int convTwosComp(int b);
+
+// Forward declaration for adns_read_reg function
+byte adns_read_reg(byte reg_addr);
+
+//Be sure to add the SROM file into this sketch via "Sketch->Add File"
+extern const unsigned short firmware_length;
+extern const unsigned char firmware_data[];
+
+void setup() {
+  Serial.begin(9600);
+  
+  pinMode(ncs_1, OUTPUT);
+  pinMode(ncs_2, OUTPUT);
+  // Set Teensy pin 6 as OUTPUT and HIGH for PMW3389 RST (shared)
+  const int rstPin = 6;
+  pinMode(rstPin, OUTPUT);
+  digitalWrite(rstPin, HIGH);
+
+  pinMode(Motion_Interrupt_Pin_1, INPUT);
+  digitalWrite(Motion_Interrupt_Pin_1, HIGH);
+  attachInterrupt(Motion_Interrupt_Pin_1, UpdatePointer1, FALLING);
+
+  pinMode(Motion_Interrupt_Pin_2, INPUT);
+  digitalWrite(Motion_Interrupt_Pin_2, HIGH);
+  attachInterrupt(Motion_Interrupt_Pin_2, UpdatePointer2, FALLING);
+
+  SPI.begin();
+  SPI.beginTransaction(SPISettings(125000, MSBFIRST, SPI_MODE3));
+
+  performStartup();  
+  delay(5000);
+
+  // Print Product_ID to confirm sensor communication
+  byte product_id_1 = adns_read_reg(Product_ID, ncs_1);
+  Serial.print("Sensor 1 PMW3389 Product_ID: 0x");
+  Serial.println(product_id_1, HEX);
+  byte product_id_2 = adns_read_reg(Product_ID, ncs_2);
+  Serial.print("Sensor 2 PMW3389 Product_ID: 0x");
+  Serial.println(product_id_2, HEX);
+  initComplete=9;
+}
+
+
+void adns_com_begin(int ncs_pin){
+  digitalWrite(ncs_pin, LOW);
+}
+
+void adns_com_end(int ncs_pin){
+  digitalWrite(ncs_pin, HIGH);
+}
+
+byte adns_read_reg(byte reg_addr, int ncs_pin){
+  adns_com_begin(ncs_pin);
+  SPI.transfer(reg_addr & 0x7f );
+  delayMicroseconds(100);
+  byte data = SPI.transfer(0);
+  delayMicroseconds(1);
+  adns_com_end(ncs_pin);
+  delayMicroseconds(19);
+  return data;
+}
+
+void adns_write_reg(byte reg_addr, byte data, int ncs_pin){
+  adns_com_begin(ncs_pin);
+  SPI.transfer(reg_addr | 0x80 );
+  SPI.transfer(data);
+  delayMicroseconds(20);
+  adns_com_end(ncs_pin);
+  delayMicroseconds(100);
+}
+
+void adns_upload_firmware(int ncs_pin){
+  Serial.print("Uploading firmware for sensor on ncs pin ");
+  Serial.println(ncs_pin);
+  adns_write_reg(Config2, 0x20, ncs_pin);
+  adns_write_reg(SROM_Enable, 0x1d, ncs_pin);
+  delay(10);
+  adns_write_reg(SROM_Enable, 0x18, ncs_pin);
+  adns_com_begin(ncs_pin);
+  SPI.transfer(SROM_Load_Burst | 0x80);
+  delayMicroseconds(15);
+  unsigned char c;
+  for(int i = 0; i < firmware_length; i++){
+    c = (unsigned char)pgm_read_byte(firmware_data + i);
+    SPI.transfer(c);
+    delayMicroseconds(15);
+  }
+  adns_com_end(ncs_pin);
+  adns_read_reg(SROM_ID, ncs_pin);
+  adns_write_reg(Config2, 0x00, ncs_pin);
+  adns_write_reg(Config1, 0x15, ncs_pin);
+}
+
+
+void performStartup(void){
+  // Sensor 1
+  adns_com_end(ncs_1);
+  adns_com_begin(ncs_1);
+  adns_com_end(ncs_1);
+  adns_write_reg(Power_Up_Reset, 0x5a, ncs_1);
+  delay(50);
+  adns_read_reg(Motion, ncs_1);
+  adns_read_reg(Delta_X_L, ncs_1);
+  adns_read_reg(Delta_X_H, ncs_1);
+  adns_read_reg(Delta_Y_L, ncs_1);
+  adns_read_reg(Delta_Y_H, ncs_1);
+  adns_upload_firmware(ncs_1);
+  delay(10);
+  // Sensor 2
+  adns_com_end(ncs_2);
+  adns_com_begin(ncs_2);
+  adns_com_end(ncs_2);
+  adns_write_reg(Power_Up_Reset, 0x5a, ncs_2);
+  delay(50);
+  adns_read_reg(Motion, ncs_2);
+  adns_read_reg(Delta_X_L, ncs_2);
+  adns_read_reg(Delta_X_H, ncs_2);
+  adns_read_reg(Delta_Y_L, ncs_2);
+  adns_read_reg(Delta_Y_H, ncs_2);
+  adns_upload_firmware(ncs_2);
+  delay(10);
+  Serial.println("Both Optical Chips Initialized");
+}
+
+void UpdatePointer1(void){
+  if(initComplete==9){
+    adns_write_reg(Motion, 0x01, ncs_1);
+    adns_read_reg(Motion, ncs_1);
+    int dx = convTwosComp((int)adns_read_reg(Delta_X_L, ncs_1));
+    int dy = convTwosComp((int)adns_read_reg(Delta_Y_L, ncs_1));
+    total_x_1 += dx;
+    total_y_1 += dy;
+    movementflag_1=1;
+  }
+}
+
+void UpdatePointer2(void){
+  if(initComplete==9){
+    adns_write_reg(Motion, 0x01, ncs_2);
+    adns_read_reg(Motion, ncs_2);
+    int dx = convTwosComp((int)adns_read_reg(Delta_X_L, ncs_2));
+    int dy = convTwosComp((int)adns_read_reg(Delta_Y_L, ncs_2));
+    total_x_2 += dx;
+    total_y_2 += dy;
+    movementflag_2=1;
+  }
+}
+
+void dispRegisters(void){
+  int oreg[7] = {
+    0x00,0x3F,0x2A,0x02  };
+  const char* oregname[] = {
+    "Product_ID","Inverse_Product_ID","SROM_Version","Motion"  };
+  byte regres;
+
+  digitalWrite(ncs,LOW);
+
+  int rctr=0;
+  for(rctr=0; rctr<4; rctr++){
+    SPI.transfer(oreg[rctr]);
+    delay(1);
+    Serial.println("---");
+    Serial.println(oregname[rctr]);
+    Serial.println(oreg[rctr],HEX);
+    regres = SPI.transfer(0);
+    Serial.println(regres,BIN);  
+    Serial.println(regres,HEX);  
+    delay(1);
+  }
+  digitalWrite(ncs,HIGH);
+}
+
+
+int convTwosComp(int b){
+  //Convert from 2's complement
+  if(b & 0x80){
+    b = -1 * ((b ^ 0xff) + 1);
+    }
+  return b;
+  }
+  
+
+unsigned long lastDebugTime = 0;
+unsigned long lastMotionTime = 0;
+
+void loop() {
+  unsigned long now = millis();
+  static unsigned long lastMotionTime_1 = 0;
+  static unsigned long lastMotionTime_2 = 0;
+  static unsigned long lastDebugTime = 0;
+
+  if(movementflag_1){
+    Serial.print("Sensor 1 Motion detected! CPI counts - X: ");
+    Serial.print(total_x_1);
+    Serial.print(", Y: ");
+    Serial.println(total_y_1);
+    movementflag_1=0;
+    lastMotionTime_1 = now;
+  }
+  if(movementflag_2){
+    Serial.print("Sensor 2 Motion detected! CPI counts - X: ");
+    Serial.print(total_x_2);
+    Serial.print(", Y: ");
+    Serial.println(total_y_2);
+    movementflag_2=0;
+    lastMotionTime_2 = now;
+  }
+  // Print debug line every 10 seconds if no motion detected
+  if (now - lastDebugTime > 10000) {
+    if ((now - lastMotionTime_1 > 10000) && (now - lastMotionTime_2 > 10000)) {
+      Serial.println("No motion detected in last 10 seconds on either sensor.");
+    }
+    lastDebugTime = now;
+  }
+}
