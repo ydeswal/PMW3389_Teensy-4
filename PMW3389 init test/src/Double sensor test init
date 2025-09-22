@@ -75,14 +75,14 @@ void UpdatePointer2(void);
 // Forward declaration for startup function
 void performStartup(void);
 
-// Forward declaration for register display function
-void dispRegisters(void);
+// Forward declaration for register display function (takes the CS pin)
+void dispRegisters(int ncs_pin);
 
 // Forward declaration for two's complement conversion function
 int convTwosComp(int b);
 
-// Forward declaration for adns_read_reg function
-byte adns_read_reg(byte reg_addr);
+// Forward declaration for adns_read_reg function (takes the CS pin)
+byte adns_read_reg(byte reg_addr, int ncs_pin);
 
 //Be sure to add the SROM file into this sketch via "Sketch->Add File"
 extern const unsigned short firmware_length;
@@ -120,6 +120,10 @@ void setup() {
   Serial.print("Sensor 2 PMW3389 Product_ID: 0x");
   Serial.println(product_id_2, HEX);
   initComplete=9;
+  // After performStartup() and sensor IDs are printed
+  dispRegisters(ncs_1);   // Show registers for Sensor 1
+  dispRegisters(ncs_2);   // Show registers for Sensor 2
+
 }
 
 
@@ -228,29 +232,28 @@ void UpdatePointer2(void){
   }
 }
 
-void dispRegisters(void){
-  int oreg[7] = {
-    0x00,0x3F,0x2A,0x02  };
-  const char* oregname[] = {
-    "Product_ID","Inverse_Product_ID","SROM_Version","Motion"  };
+void dispRegisters(int ncs_pin) {
+  int oreg[4] = {0x00, 0x3F, 0x2A, 0x02};
+  const char* oregname[] = {"Product_ID", "Inverse_Product_ID", "SROM_Version", "Motion"};
   byte regres;
 
-  digitalWrite(ncs,LOW);
+  digitalWrite(ncs_pin, LOW);
 
-  int rctr=0;
-  for(rctr=0; rctr<4; rctr++){
+  for (int rctr=0; rctr<4; rctr++) {
     SPI.transfer(oreg[rctr]);
     delay(1);
     Serial.println("---");
     Serial.println(oregname[rctr]);
-    Serial.println(oreg[rctr],HEX);
+    Serial.println(oreg[rctr], HEX);
     regres = SPI.transfer(0);
-    Serial.println(regres,BIN);  
-    Serial.println(regres,HEX);  
+    Serial.println(regres, BIN);
+    Serial.println(regres, HEX);
     delay(1);
   }
-  digitalWrite(ncs,HIGH);
+
+  digitalWrite(ncs_pin, HIGH);
 }
+
 
 
 int convTwosComp(int b){
