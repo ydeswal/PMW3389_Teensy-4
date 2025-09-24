@@ -2,6 +2,7 @@
 #include <pgmspace.h>
 #include "SROM.h"
 #include "Mouse.h"
+
 // Registers
 #define Product_ID  0x00
 #define Revision_ID 0x01
@@ -53,34 +54,22 @@
 #define Raw_Data_Burst  0x64
 #define LiftCutoff_Tune2  0x65
 
-//Set this to what pin your "INT0" hardware interrupt feature is on
-#define Motion_Interrupt_Pin 8 // Teensy 4.0 INT0 is pin 8
+const int ncs = 10;  // SPI slave select pin
 
-const int ncs = 10;  //This is the SPI "slave select" pin that the sensor is hooked up to
+byte initComplete = 0;
+int xydat[2] = {0, 0};  // Remove volatile since no interrupts
+unsigned long currTime;
+unsigned long pollTimer = 0;
 
-byte initComplete=0;
-volatile int xydat[2];
-volatile byte movementflag=0;
-
-long total_x = 0;
-long total_y = 0;
-
-// Forward declaration for interrupt handler
-void UpdatePointer(void);
-
-// Forward declaration for startup function
+// Forward declarations
 void performStartup(void);
-
-// Forward declaration for register display function
-void dispRegisters(void);
-
-// Forward declaration for two's complement conversion function
+byte adns_read_reg(byte reg_addr);
+void adns_write_reg(byte reg_addr, byte data);
+void adns_upload_firmware(void);
+void UpdatePointer(void);
 int convTwosComp(int b);
 
-// Forward declaration for adns_read_reg function
-byte adns_read_reg(byte reg_addr);
-
-//Be sure to add the SROM file into this sketch via "Sketch->Add File"
+// Firmware blob
 extern const unsigned short firmware_length;
 extern const unsigned char firmware_data[];
 
@@ -93,24 +82,26 @@ void setup() {
   pinMode(rstPin, OUTPUT);
   digitalWrite(rstPin, HIGH); // Hold RST high for normal operation
   
-  pinMode(Motion_Interrupt_Pin, INPUT);
-  digitalWrite(Motion_Interrupt_Pin, HIGH);
-  attachInterrupt(Motion_Interrupt_Pin, UpdatePointer, FALLING); // Teensy uses pin number
-
+  // Remove interrupt setup - we're using polling now
+  
   SPI.begin();
-  SPI.beginTransaction(SPISettings(125000, MSBFIRST, SPI_MODE3)); // Teensy 4.0 uses SPISettings
-
+  SPI.beginTransaction(SPISettings(125000, MSBFIRST, SPI_MODE3));
   
   performStartup();  
-  
-  delay(5000);
+  delay(1000);
   
   // Print Product_ID to confirm sensor communication
   byte product_id = adns_read_reg(Product_ID);
   Serial.print("PMW3389 Product_ID: 0x");
   Serial.println(product_id, HEX);
-  initComplete=9;
-
+  
+  if(product_id == 0x47) {
+    Serial.println("Sensor detected successfully! Starting polling mode...");
+  } else {
+    Serial.println("ERROR: Sensor not detected properly!");
+  }
+  
+  initComplete = 9;
 }
 
 void adns_com_begin(){
@@ -124,7 +115,7 @@ void adns_com_end(){
 byte adns_read_reg(byte reg_addr){
   adns_com_begin();
   
-  // send adress of the register, with MSBit = 0 to indicate it's a read
+  // send address of the register, with MSBit = 0 to indicate it's a read
   SPI.transfer(reg_addr & 0x7f );
   delayMicroseconds(100); // tSRAD
   // read data
@@ -140,14 +131,14 @@ byte adns_read_reg(byte reg_addr){
 void adns_write_reg(byte reg_addr, byte data){
   adns_com_begin();
   
-  //send adress of the register, with MSBit = 1 to indicate it's a write
+  //send address of the register, with MSBit = 1 to indicate it's a write
   SPI.transfer(reg_addr | 0x80 );
-  //sent data
+  //send data
   SPI.transfer(data);
   
   delayMicroseconds(20); // tSCLK-NCS for write operation
   adns_com_end();
-  delayMicroseconds(100); // tSWW/tSWR (=120us) minus tSCLK-NCS. Could be shortened, but is looks like a safe lower bound 
+  delayMicroseconds(100); // tSWW/tSWR (=120us) minus tSCLK-NCS
 }
 
 void adns_upload_firmware(){
@@ -168,13 +159,13 @@ void adns_upload_firmware(){
   
   // write the SROM file (=firmware data) 
   adns_com_begin();
-  SPI.transfer(SROM_Load_Burst | 0x80); // write burst destination adress
+  SPI.transfer(SROM_Load_Burst | 0x80); // write burst destination address
   delayMicroseconds(15);
   
   // send all bytes of the firmware
   unsigned char c;
   for(int i = 0; i < firmware_length; i++){ 
-  c = (unsigned char)pgm_read_byte(firmware_data + i); // pgm_read_byte works on Teensy
+    c = (unsigned char)pgm_read_byte(firmware_data + i);
     SPI.transfer(c);
     delayMicroseconds(15);
   }
@@ -189,8 +180,7 @@ void adns_upload_firmware(){
   adns_write_reg(Config1, 0x15);
   
   adns_com_end();
-  }
-
+}
 
 void performStartup(void){
   adns_com_end(); // ensure that the serial port is reset
@@ -208,77 +198,43 @@ void performStartup(void){
   adns_upload_firmware();
   delay(10);
   Serial.println("Optical Chip Initialized");
-  }
+}
 
 void UpdatePointer(void){
-  if(initComplete==9){
+  if(initComplete == 9){
+    //write 0x01 to Motion register and read from it to freeze the motion values and make them available
     adns_write_reg(Motion, 0x01);
     adns_read_reg(Motion);
 
-    int dx = convTwosComp((int)adns_read_reg(Delta_X_L));
-    int dy = convTwosComp((int)adns_read_reg(Delta_Y_L));
-
-    total_x += dx;
-    total_y += dy;
-
-    movementflag=1;
+    xydat[0] = (int)adns_read_reg(Delta_X_L);
+    xydat[1] = (int)adns_read_reg(Delta_Y_L);
   }
 }
-
-void dispRegisters(void){
-  int oreg[7] = {
-    0x00,0x3F,0x2A,0x02  };
-  const char* oregname[] = {
-    "Product_ID","Inverse_Product_ID","SROM_Version","Motion"  };
-  byte regres;
-
-  digitalWrite(ncs,LOW);
-
-  int rctr=0;
-  for(rctr=0; rctr<4; rctr++){
-    SPI.transfer(oreg[rctr]);
-    delay(1);
-    Serial.println("---");
-    Serial.println(oregname[rctr]);
-    Serial.println(oreg[rctr],HEX);
-    regres = SPI.transfer(0);
-    Serial.println(regres,BIN);  
-    Serial.println(regres,HEX);  
-    delay(1);
-  }
-  digitalWrite(ncs,HIGH);
-}
-
 
 int convTwosComp(int b){
   //Convert from 2's complement
   if(b & 0x80){
     b = -1 * ((b ^ 0xff) + 1);
-    }
-  return b;
   }
-  
-
-unsigned long lastDebugTime = 0;
-unsigned long lastMotionTime = 0;
+  return b;
+}
 
 void loop() {
-  unsigned long now = millis();
-  if(movementflag){
-    int dx = convTwosComp((int)adns_read_reg(Delta_X_L));
-    int dy = convTwosComp((int)adns_read_reg(Delta_Y_L));
-    Serial.print("Motion detected! CPI counts - X: ");
-    Serial.print(dx);
-    Serial.print(", Y: ");
-    Serial.println(dy);
-    movementflag=0;
-    lastMotionTime = now;
-  }
-  // Print debug line every 10 seconds if no motion detected
-  if (now - lastDebugTime > 10000) {
-    if (now - lastMotionTime > 10000) {
-      Serial.println("No motion detected in last 10 seconds.");
-    }
-    lastDebugTime = now;
+  currTime = millis();
+  
+  if(currTime > pollTimer){
+    UpdatePointer();
+    
+    // Convert from 2's complement
+    xydat[0] = convTwosComp(xydat[0]);
+    xydat[1] = convTwosComp(xydat[1]);
+    
+    // Always output values (including 0s) on same line
+    Serial.print("x=");
+    Serial.print(xydat[0]);
+    Serial.print(" y=");
+    Serial.println(xydat[1]);
+
+    pollTimer = currTime + 60; // Poll every 60ms (slower rate)
   }
 }
