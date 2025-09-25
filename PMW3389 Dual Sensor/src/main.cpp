@@ -21,6 +21,16 @@
 const String delimiter = ",";
 const int decimalPlaces = 6;
 bool headerSent = false;
+
+// Convert degrees to radians (moved before global variables that use it)
+double deg_to_rad(double degrees) {
+  return degrees * (M_PI / 180.0);
+}
+
+// Convert radians to degrees
+double rad_to_deg(double radians) {
+  return radians * (180.0 / M_PI);
+}
 PMW3389 sensor1, sensor2;
 int xydat_1[2] = {0, 0};
 int xydat_2[2] = {0, 0};
@@ -48,10 +58,10 @@ double velocity_y = 0.0;         // Y velocity component
 // Sensor configuration (spherical coordinates from paper)
 // Sensor 1 at (N2°, E0°) = (theta=88°, phi=0°) 
 // Sensor 2 at (N23°, E57°) = (theta=67°, phi=57°)
-const double sensor1_theta = deg_to_rad(88.0);  // 2° from north pole
-const double sensor1_phi = deg_to_rad(0.0);     // 0° longitude
-const double sensor2_theta = deg_to_rad(67.0);  // 23° from north pole  
-const double sensor2_phi = deg_to_rad(57.0);    // 57° longitude
+const double sensor1_theta = 88.0 * (M_PI / 180.0);  // 2° from north pole (88° from equator)
+const double sensor1_phi = 0.0 * (M_PI / 180.0);     // 0° longitude
+const double sensor2_theta = 67.0 * (M_PI / 180.0);  // 23° from north pole (67° from equator)
+const double sensor2_phi = 57.0 * (M_PI / 180.0);    // 57° longitude
 
 void setup() {
   Serial.begin(115200);  // Match sample.cpp baud rate
@@ -84,16 +94,6 @@ void setup() {
   
   // Initialize start time for timestamp calculation
   startTime = millis();
-}
-
-// Convert degrees to radians
-double deg_to_rad(double degrees) {
-  return degrees * (M_PI / 180.0);
-}
-
-// Convert radians to degrees
-double rad_to_deg(double radians) {
-  return radians * (180.0 / M_PI);
 }
 
 // Vector operations for great circle method
