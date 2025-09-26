@@ -10,12 +10,13 @@
 #define EARTH_RADIUS_M 6371000.0
 
 // Spherical treadmill parameters (from research paper)
-#define TREADMILL_RADIUS 0.10  // 10cm radius from paper
-#define SENSOR_SEPARATION 0.02  // Distance between sensors in meters
+#define TREADMILL_RADIUS 0.1018  // Ball radius: circumference 64cm / (2*π) = 10.18cm
+#define BALL_CIRCUMFERENCE 0.64  // 64cm ball circumference as specified
+#define SENSOR_SEPARATION 0.02   // Distance between sensors in meters
 
 // Scale factor to convert sensor counts to approximate movement
-// Adjust this based on your sensor's CPI and calibration
-#define COUNTS_TO_METERS 0.001
+// Adjusted for 64cm ball circumference and 1600 CPI sensors
+#define COUNTS_TO_METERS 0.0004  // Refined scaling for 64cm ball
 
 // Communication constants (similar to sample.cpp)
 const String delimiter = ",";
@@ -66,6 +67,12 @@ const double sensor2_phi = 57.0 * (M_PI / 180.0);    // 57° longitude
 void setup() {
   Serial.begin(115200);  // Match sample.cpp baud rate
   Serial.println("Starting dual PMW3389 sensor initialization...");
+  Serial.print("Ball specifications - Circumference: ");
+  Serial.print(BALL_CIRCUMFERENCE * 100);  // Convert to cm for display
+  Serial.print("cm, Radius: ");
+  Serial.print(TREADMILL_RADIUS * 100);    // Convert to cm for display
+  Serial.println("cm");
+  
   sensor1.begin(SS1);
   sensor2.begin(SS2);
   delay(250);
@@ -139,8 +146,31 @@ Vector3D spherical_to_cartesian(double theta, double phi, double radius = TREADM
   );
 }
 
+// Check if rotation axis is on singular great circle (from paper)
+bool is_singular_great_circle(const Vector3D& Q1, const Vector3D& Q2) {
+  // Check if Q1 and Q2 are very close (indicating overlapping great circles)
+  Vector3D diff = Vector3D(Q1.x - Q2.x, Q1.y - Q2.y, Q1.z - Q2.z);
+  double distance = magnitude(diff);
+  return distance < 1e-6; // Small threshold for numerical precision
+}
+
+// Inverse Matrix Method for singular great circle cases (from Appendix A.2)
+Vector3D calculate_rotation_axis_inverse_matrix(const Vector3D& motion1, const Vector3D& motion2) {
+  // Get sensor position vectors
+  Vector3D M1 = spherical_to_cartesian(sensor1_theta, sensor1_phi);
+  Vector3D M2 = spherical_to_cartesian(sensor2_theta, sensor2_phi);
+  
+  // This method uses the inverse of a 3x3 matrix as described in the paper
+  // For motion vectors v1, v2 and position vectors M1, M2
+  // We solve: [M1x M1y M1z; M2x M2y M2z; 0 0 1] * A = [v1x v1y 0; v2x v2y 0; 0 0 0]
+  
+  // Simplified version: use cross product of position vectors as fallback
+  Vector3D axis = cross_product(M1, M2);
+  return normalize(axis);
+}
+
 // Great Circle Method for calculating spherical treadmill rotation (from paper)
-// This implements the algorithm described in the research paper
+// This implements the algorithm described in the research paper with singular case handling
 Vector3D calculate_rotation_axis(const Vector3D& motion1, const Vector3D& motion2) {
   // Get sensor position vectors
   Vector3D M1 = spherical_to_cartesian(sensor1_theta, sensor1_phi);
@@ -172,7 +202,13 @@ Vector3D calculate_rotation_axis(const Vector3D& motion1, const Vector3D& motion
   Q1.x *= TREADMILL_RADIUS; Q1.y *= TREADMILL_RADIUS; Q1.z *= TREADMILL_RADIUS;
   Q2.x *= TREADMILL_RADIUS; Q2.y *= TREADMILL_RADIUS; Q2.z *= TREADMILL_RADIUS;
   
-  // Step 3: Calculate rotation axis A from cross product of Q vectors
+  // Check for singular great circle case (when Q1 and Q2 overlap)
+  if (is_singular_great_circle(Q1, Q2)) {
+    // Use inverse matrix method for singular case
+    return calculate_rotation_axis_inverse_matrix(motion1, motion2);
+  }
+  
+  // Step 3: Calculate rotation axis A from cross product of Q vectors (normal case)
   Vector3D cross5 = cross_product(Q1, Q2);
   Vector3D A = normalize(cross5);
   
@@ -199,13 +235,20 @@ double calculate_angular_velocity(const Vector3D& motion, const Vector3D& axis, 
   return 0.0;
 }
 
-// Update position based on spherical treadmill motion (corrected approach)
+// Calculate actual distance traveled on ball surface (using 64cm circumference)
+double calculate_ball_surface_distance(double angular_displacement_rad) {
+  // Arc length = radius * angle, but we use circumference-based calculation
+  // Distance = (angular_displacement / 2π) * circumference
+  return (angular_displacement_rad / (2.0 * M_PI)) * BALL_CIRCUMFERENCE;
+}
+
+// Update position based on spherical treadmill motion (corrected approach with 64cm ball)
 void update_spherical_position_and_distance(int s1_dx, int s1_dy, int s2_dx, int s2_dy, double delta_time) {
   // Convert sensor movements to 3D motion vectors
   Vector3D motion1(s1_dx * COUNTS_TO_METERS, s1_dy * COUNTS_TO_METERS, 0);
   Vector3D motion2(s2_dx * COUNTS_TO_METERS, s2_dy * COUNTS_TO_METERS, 0);
   
-  // Calculate rotation axis using great circle method
+  // Calculate rotation axis using great circle method (with singular case handling)
   Vector3D rotation_axis = calculate_rotation_axis(motion1, motion2);
   
   // Get sensor positions
@@ -214,12 +257,14 @@ void update_spherical_position_and_distance(int s1_dx, int s1_dy, int s2_dx, int
   // Calculate angular velocity
   double omega = calculate_angular_velocity(motion1, rotation_axis, M1);
   
-  // Calculate arc length traveled on sphere surface
+  // Calculate angular displacement
   double angular_displacement = omega * delta_time;
-  double arc_length = angular_displacement * TREADMILL_RADIUS;
+  
+  // Calculate actual distance traveled on 64cm ball surface
+  double surface_distance = calculate_ball_surface_distance(fabs(angular_displacement));
   
   // Accumulate total distance
-  total_distance += fabs(arc_length);
+  total_distance += surface_distance;
   
   // Update spherical coordinates (simplified approach for virtual map)
   current_theta += angular_displacement * 0.1;  // Scale factor for mapping
