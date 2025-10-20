@@ -3,20 +3,47 @@
 #include <math.h>
 #include "PMW3389.h"
 
+// Forward declarations for motion-interrupt functions
+void setupMotionInterrupts();
+void sensor1MotionISR();
+void sensor2MotionISR(); 
+void processMotionData();
+
+
+// SPI and motion interrupt pins
 #define SS1  9
 #define SS2  10
+#define MT1  7
+#define MT2  8
 
-// Earth radius in meters for great circle calculations
-#define EARTH_RADIUS_M 6371000.0
+// Ball and sensor constants
+const double BALL_CIRCUMFERENCE = 0.64;  // 64cm ball
+const double TREADMILL_RADIUS = BALL_CIRCUMFERENCE / (2.0 * M_PI);
+const double COUNTS_TO_METERS = BALL_CIRCUMFERENCE / 1600.0;  // 1600 CPI
 
-// Spherical treadmill parameters (from research paper)
-#define TREADMILL_RADIUS 0.1018  // Ball radius: circumference 64cm / (2*π) = 10.18cm
-#define BALL_CIRCUMFERENCE 0.64  // 64cm ball circumference as specified
-#define SENSOR_SEPARATION 0.02   // Distance between sensors in meters
+// Motion interrupt flags (defined early so ISRs can reference them)
+volatile bool sensor1_motionDetected = false;  // Sensor 1 motion interrupt flag
+volatile bool sensor2_motionDetected = false;  // Sensor 2 motion interrupt flag
+volatile unsigned long motionTimestamp = 0;    // Microsecond timestamp from motion interrupt
 
-// Scale factor to convert sensor counts to approximate movement
-// Adjusted for 64cm ball circumference and 1600 CPI sensors
-#define COUNTS_TO_METERS 0.0004  // Refined scaling for 64cm ball
+// Motion ISRs
+void sensor1MotionISR() {
+  sensor1_motionDetected = true;
+  motionTimestamp = micros();
+}
+
+void sensor2MotionISR() {
+  sensor2_motionDetected = true;
+  motionTimestamp = micros();
+}
+
+// Setup motion interrupts
+void setupMotionInterrupts() {
+  pinMode(MT1, INPUT_PULLUP);
+  pinMode(MT2, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(MT1), sensor1MotionISR, RISING);
+  attachInterrupt(digitalPinToInterrupt(MT2), sensor2MotionISR, RISING);
+}
 
 // Communication constants (similar to sample.cpp)
 const String delimiter = ",";
@@ -33,11 +60,19 @@ double rad_to_deg(double radians) {
   return radians * (180.0 / M_PI);
 }
 PMW3389 sensor1, sensor2;
-int xydat_1[2] = {0, 0};
-int xydat_2[2] = {0, 0};
-unsigned long currTime;
-unsigned long pollTimer = 0;
-unsigned long startTime = 0;  // Track acquisition start time
+
+// Motion-triggered interrupt variables (hardware MT pins)
+volatile bool dataReady = false;               // Flag indicating new sensor data available
+PMW3389_DATA sensor1_data;                     // Sensor 1 data from motion interrupt
+PMW3389_DATA sensor2_data;                     // Sensor 2 data from motion interrupt
+volatile unsigned long frameCount = 0;         // Frame counter for data synchronization
+
+// Previous data for delta calculations
+int prev_s1_dx = 0, prev_s1_dy = 0;
+int prev_s2_dx = 0, prev_s2_dy = 0;
+unsigned long prev_timestamp = 0;
+unsigned long startTime = 0;             // Track acquisition start time
+bool acquisitionRunning = false;         // System state flag
 
 // Position tracking variables for spherical treadmill (corrected approach)
 double current_theta = 0.0;      // Current angle in radians (spherical coordinates)
@@ -56,6 +91,10 @@ double prev_time = 0.0;          // Previous timestamp for speed calculation
 double velocity_x = 0.0;         // X velocity component  
 double velocity_y = 0.0;         // Y velocity component
 
+// Sensor data arrays for compatibility with existing functions
+int xydat_1[2] = {0, 0};         // Sensor 1 displacement data [dx, dy]
+int xydat_2[2] = {0, 0};         // Sensor 2 displacement data [dx, dy]
+
 // Sensor configuration (spherical coordinates from paper)
 // Sensor 1 at (N2°, E0°) = (theta=88°, phi=0°) 
 // Sensor 2 at (N23°, E57°) = (theta=67°, phi=57°)
@@ -63,6 +102,23 @@ const double sensor1_theta = 88.0 * (M_PI / 180.0);  // 2° from north pole (88�
 const double sensor1_phi = 0.0 * (M_PI / 180.0);     // 0° longitude
 const double sensor2_theta = 67.0 * (M_PI / 180.0);  // 23° from north pole (67° from equator)
 const double sensor2_phi = 57.0 * (M_PI / 180.0);    // 57° longitude
+
+// Combined motion processing function - called when either sensor detects motion
+void processMotionData() {
+  // Read both sensors when motion is detected (burst read for efficiency)
+  sensor1_data = sensor1.readBurst();
+  sensor2_data = sensor2.readBurst();
+  
+  // Increment frame counter
+  frameCount++;
+  
+  // Clear individual motion flags
+  sensor1_motionDetected = false;
+  sensor2_motionDetected = false;
+  
+  // Set flag for main loop processing
+  dataReady = true;
+}
 
 void setup() {
   Serial.begin(115200);  // Match sample.cpp baud rate
@@ -101,7 +157,12 @@ void setup() {
   
   // Initialize start time for timestamp calculation
   startTime = millis();
+  
+  // Start motion-triggered interrupt system (hardware MT pins)
+  setupMotionInterrupts();
 }
+
+
 
 // Vector operations for great circle method
 struct Vector3D {
@@ -378,40 +439,45 @@ void sendData(unsigned long timestamp, int s1_dx, int s1_dy, double dt,
 
 
 void loop() {
-  currTime = millis();
-  
   // Send header once at start (similar to sample.cpp)
   if (!headerSent) {
     sendHeader();
     headerSent = true;
   }
   
-  if(currTime > pollTimer) {
-    PMW3389_DATA data1 = sensor1.readBurst();
-    PMW3389_DATA data2 = sensor2.readBurst();
+  // Check for motion detection from either sensor
+  if (sensor1_motionDetected || sensor2_motionDetected) {
+    // Process motion data (reads both sensors and sets dataReady flag)
+    processMotionData();
+  }
+  
+  // Process motion data when available (triggered by MT pins)
+  if (dataReady) {
+    // Clear the flag first to avoid missing new data
+    dataReady = false;
     
-    // Store individual sensor readings
-    xydat_1[0] = data1.dx;
-    xydat_1[1] = data1.dy;
-    xydat_2[0] = data2.dx;
-    xydat_2[1] = data2.dy;
+    // Extract data from motion-triggered sensor reads
+    xydat_1[0] = sensor1_data.dx;  // Use dx, dy from PMW3389_DATA struct
+    xydat_1[1] = sensor1_data.dy;
+    xydat_2[0] = sensor2_data.dx;
+    xydat_2[1] = sensor2_data.dy;
     
-    // Calculate time delta for proper speed/velocity calculations
-    double current_time = currTime / 1000.0;  // Convert to seconds
-    double delta_time = (prev_time > 0) ? (current_time - prev_time) : 0.1;
-    prev_time = current_time;
+    // Calculate time delta using microsecond precision motion timestamp
+    double delta_time = (prev_timestamp > 0) ? 
+                       ((motionTimestamp - prev_timestamp) / 1000000.0) : 
+                       0.015;  // Default to 15ms if first sample (typical motion interval)
+    prev_timestamp = motionTimestamp;
     
-    // Update comprehensive navigation data
+    // Update comprehensive navigation data with motion-triggered values
     update_navigation_data(xydat_1[0], xydat_1[1], xydat_2[0], xydat_2[1], delta_time);
     
-    // Calculate frame count
-    static unsigned long frameCount = 0;
-    frameCount++;
-    
-    // Send data using sample.cpp-style communication
-    sendData(currTime, xydat_1[0], xydat_1[1], delta_time, 
+    // Send data using sample.cpp-style communication with motion timestamp
+    sendData(motionTimestamp / 1000, xydat_1[0], xydat_1[1], delta_time, 
              xydat_2[0], xydat_2[1], frameCount);
-    
-    pollTimer = currTime + 100;  // 10Hz update rate
   }
 }
+
+// Constants
+#define BALL_CIRCUMFERENCE 0.64  // 64 cm
+#define TREADMILL_RADIUS (BALL_CIRCUMFERENCE / (2.0 * M_PI))
+#define COUNTS_TO_METERS (BALL_CIRCUMFERENCE / 1600.0)  // 1600 CPI

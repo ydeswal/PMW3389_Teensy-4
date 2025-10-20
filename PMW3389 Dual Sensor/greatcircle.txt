@@ -1,0 +1,853 @@
+Abstract: A head-fixed rodent virtual reality (VR) system allows imaging of neuronal activity from the brain during
+behavioral tasks. To accurately measure the complex two-dimensional behavior of animals, it is necessary to detect the
+motion of the spherical treadmill of the VR system with multiple sensors. However, commercial VR systems for ro-
+dents are not widely used; they are expensive and the algorithms used to calculate the motion of the spherical treadmill
+from sensor signals are not publicly available. We developed a system to detect the motion of a spherical treadmill at
+high-speed using two optical mice. The system can be used on a general-purpose VR platform. A novel algorithm to
+robustly calculate the rotation axis of the spherical treadmill using spherical geometry was also devised. This system
+enables accurate reconstruction of complex two-dimensional behaviors of animals. The system is open source, which
+should encourage the use of VR-based approaches for imaging brain activity in rodents during behavioral tasks.
+Keywords: virtual reality system for rodents, open source, two optical mice, robust algorithm, spherical geometry
+1. Introduction
+Elucidating the functional structure of the brain is one of the
+major challenges of neuroscience. However, the brain is complex,
+and there is not always agreement as to what constitutes an under-
+standing of the brain [1]. To clarify its function and structure, it is
+important that many scientists participate in brain research from
+various perspectives and using many methodologies, proposing
+diverse ideas and competitive results. To encourage scientists to
+enter the field of brain research, experimental platforms that are
+inexpensive and offer unique findings are needed.
+The cerebral cortex, which plays a central role in the higher
+cognitive and behavioral functions in the brain, is divided into
+many functional structures or areas. However, not all areas have
+been well defined by classical anatomical studies (e.g., Ref. [2]).
+In several cases, what was previously thought to be one area has
+been distinguished as multiple areas upon appropriate experimen-
+tation [3], [4], [5]. For example, Broadman’s area 6 was clearly
+divided into premotor and supplementary motor areas, only after
+recording neuronal activities in primates alternately performing
+visual- and memory-guided sequential movement tasks, which re-
+vealed the differences in the properties of the areas [3], [6]. How-
+ever, identifying brain areas and mapping their functions using
+electrophysiological techniques alone is time consuming and la-
+1 Department of Physiology, Tohoku University School of Medicine,
+Sendai, Miyagi 980–8575, Japan2 Department of Neuroscience, Faculty of Medicine, Tohoku Medical and
+Pharmaceutical University, Sendai, Miyagi 983–8536, Japan3 Shokei Gakuin College, Natori, Miyagi 981–1295, Japana) sakamoto@tohoku-mpu.ac.jp
+bor intensive. For instance, a new area that Matsuzaka named the
+posterior medial prefrontal cortex required approximately 3,000
+microelectrode penetrations to identify and accurately map the
+nature of the neural activity [5]. Moreover, some structures, such
+as the pinwheel structure in the primary visual cortex, are dif-
+ficult to identify using electrophysiological techniques alone [7].
+Therefore, novel imaging techniques are needed to facilitate more
+accurate cortical region identification and functional mapping.
+In the field of neurophysiology, experiments using rodents, es-
+pecially mice with various genetic modifications, are becoming
+increasingly important. In mice, it is possible to record cellular-
+level activity via two-photon imaging on a scale of several mil-
+limeters squared [8], [9]. Even without such high-end methods,
+imaging of endogenous signals is relatively cheap and simple
+and can successfully identify brain areas [10], [11]. For exam-
+ple, Tsukano et al. discovered new auditory areas in anesthetized
+mice via frequency response mapping based on flavin protein flu-
+orescence imaging [12]. However, when attempting functional
+mapping of motor-related regions via imaging, it is essential to
+perform the mapping in animals under various appropriate condi-
+tions.
+VR systems for mice are promising for functional brain map-
+ping [13], [14], [15], [16], [17], which fulfill the seemingly con-
+tradictory requirements of head fixation for imaging and free
+behavior of the animal. In particular, when attempting to
+record brain activity associated with complex behaviors, a one-
+dimensional treadmill is not always sufficient. However, a spher-
+ical treadmill can accurately capture the two-dimensional motion
+of the animal on the spherical treadmill and link the stimulus pre-
+c×2023 Information Processing Society of Japan 1
+IPSJ Transactions on Bioinformatics Vol.16 1–12 (Apr. 2023)
+sentation with the motion [13], [14], [18], [19]. Spherical tread-
+mill motion must be measured in at least three dimensions, since
+it is represented by the two-dimensional coordinates of the rota-
+tion axis and the one-dimensional angular velocity of rotation.
+A technique using two computer optical mice is the ideal op-
+tion [13], [14], but commercially available VR systems for mice
+are too expensive for many research groups. Therefore, efforts are
+underway to develop platforms that provide advanced research
+resources for free or at low cost (e.g., in Japan [20]). Mushiake
+and Katayama, for instance, have supplied various technologies
+as part of such efforts [21]. To promote the use of mouse VR,
+resources for system construction should be provided as part of
+such platforms. However, the algorithms used to calculate the
+axis of rotation and angular velocity of rotation of a spherical
+treadmill using two computer optical mice have been described
+in detail and in only a few studies [22]. Algorithms must be able
+to accommodate commercially available optical mice, which dif-
+fer in sensitivity and gain (“endogenous gain variation”), and al-
+low reliable calculations of axes even when the distance between
+the optical mouse and spherical treadmill constantly changes due
+to animal movement on the latter (“exogenous gain variation”).
+Neither of these issues has been addressed in the literature.
+Unity is the standard platform for building VR systems. While
+the availability of a variety of hardware and software on Win-
+dows makes it easy for researchers to build systems to suit their
+purposes, it is not possible to directly acquire sensor values from
+multiple optical mice on the Windows operating system. We
+therefore developed a communication library that can be plugged
+into Unity such that it acquires sensor values from multiple opti-
+cal mice using the Windows Application Programming Interface
+(API). In addition, a novel algorithm that uses spherical geom-
+etry to calculate the rotation axis of the spherical treadmill ro-
+bustly and in real time was devised, implemented, and included
+in the plug-in. By releasing the library as an open resource, re-
+searchers can build VR systems for rodents inexpensively and
+easily. Through these efforts, it is expected that rodent brain ac-
+tivity imaging using VR will become more widespread, and the
+functional structure of the brain will be elucidated further.
+2. Methods
+2.1 Setup of the VR System
+A VR system for mice was constructed by attaching a second
+optical mouse to the system developed by Katayama et al. [23]
+(Fig. 1). The spherical treadmill (Hoyo Denshi Seiki, Sendai,
+Japan) mainly composed of a white spherical treadmill made of
+Styrofoam (radius = 10 cm, 70–85 g) and a bowl that holds the
+sphere and floats it with supplied air. The inner surface of the
+bowl is hemispherical and its upper edge is horizontal. The lower
+part of the bowl is connected to an oilless air compressor (OL-
+1525; UNITED, Osaka, Japan) by tubes with an inner diameter
+of 6 mm, which discharges air at a pressure of ≥ 2 kgf/cm2 and
+flow rate of ≥94 L/min.
+For simplicity, the stationary coordinates of the spherical tread-
+mill are expressed below in latitude and longitude. The top of the
+spherical treadmill is the north pole, and the position of optical
+mouse 1 is 2◦ latitude and 0◦ longitude (hereinafter expressed as
+Fig. 1 Appearance of the spherical treadmill part of the 2-optical mice VR
+system for mouse. A white Styrofoam spherical treadmill is set in a
+black bowl.
+(N2, EW0)). The circle forming the upper edge of the hemispher-
+ical bowl was aligned with the equatorial plane. Optical mouse
+2 was placed at N23◦, E57 ◦ (hereafter expressed as (N23, E57)).
+Both optical mice were positioned so that they were oriented par-
+allel to the equator, and the positive directions the detected x and
+y values were the motion to the south and west of the spherical
+treadmill, respectively.
+For reasons discussed below, the second optical mouse is inten-
+tionally moved out of the equatorial plane. Optical mice 1 (report
+rate = 500 Hz; G100S; Logitech, Lausanne, Switzerland) and 2
+(G600; report rate = 1,000 Hz; Logitech) were connected to the
+computer via wired USB connections. The x and y axis gains of
+the two optical mice were set to DPI 250. The main specifications
+of the computer were as follows :
+CPU: Core i7: 6850 K, 3.6 GHz, 15 MB, six-cores, 12 threads,
+140 W
+Memory: 32 GB (4 ×8 GB DDR4)
+Graphics board: GeForce GTX1080: 8 GB GDDR5X. 4-
+screen output
+OS: Windows 10 Pro: 64-bit DSP version
+2.2 General Architecture for the Measurement of Treadmill
+Rotation
+The communication library created in this study can be
+plugged into Unity to poll the RawInput Windows API based
+on requests for data acquisition from Unity. The library inquires
+whether or not optical mouse data are available in a fixed pe-
+riod of time, acquires those data, calculates the axis of rotation of
+the spherical treadmill and its rotation speed, etc., as necessary,
+and passes the results to Unity (Fig. 2 A). In Windows, individ-
+ual data items can be acquired from multiple optical mice using
+the RawInput API. To make VR applications available indepen-
+dent of the platform (Windows, MacOS, etc.), Unity interprets
+and executes scripts written mainly in the C# programming lan-
+guage. However, this makes it operationally difficult to access
+c×2023 Information Processing Society of Japan 2
+IPSJ Transactions on Bioinformatics Vol.16 1–12 (Apr. 2023)
+Fig. 2 System overview. A: Sequence diagram of the whole process.
+B: Flowchart of the process in the communication library, uni-
+morawi.dll.
+Windows-specific RawInput API directly from Unity. Therefore,
+in this study, we used the C++language as standard for accessing
+the Windows API and created a Dynamic Link Library (DLL).
+The signal processing results of the two optical mice were made
+available to Unity by plugging these features into it, which is a
+standard implementation scheme.
+VR systems for rodents are used simultaneously with neural
+activity measurements of the animals in motion. To investigate
+the correspondence between behavior and neural activity, the op-
+tical mouse signal must be acquired with high temporal precision.
+Therefore, it is necessary to manage time more precisely than can
+be achieved with C# scripts. Also, because the temporal precision
+is higher than that normally required for computer games, com-
+munication libraries with the necessary precision are not available
+as open resources. Therefore, in this study, we constructed a new
+system that enables recording of the calling time of the polling
+function in the order of microseconds by using the std::chrono li-
+brary of C++; the design was based on the latest C++language
+standard {C++20-compliant}.
+Details of the above process are shown in Fig. 2 B. A timer
+function, usleep (microsecond sleep), was created and interrupt
+processing was applied at specific time intervals to process the
+poll function (light red area in Fig. 2 B). Data for all events (dis-
+placement, click, wheel scroll, etc.) of all optical mice con-
+nected to the PC were acquired from RawInput API. Among
+the events, the poll function acquired both the value and time of
+the motion vector after the last poll detected by the target optical
+mouse. When enabled, the rotation axis and animal movement
+velocity vector calculation functions were performed, with the
+results recorded in the results log. The optical mouse ID, mo-
+tion vector, and time were recorded by the poll function using
+this program, which could be referenced from the C# side by a
+marshalling process (conversion of the data into a format allow-
+ing exchange between programs). The poll function was embed-
+ded in the unimorawi.dll communication library (Unity-Mouse-
+RawInput). The library will be available on github.com, a source
+code management service that allows people around the world to
+store and publish program code and design data.
+2.3 Calculation of Rotation Axis
+Based on the signals of the two optical mice obtained as de-
+scribed above, the program calculates the axis of rotation and an-
+gular velocity of rotation of the spherical treadmill. To ensure
+that the created library can be offered as open source and thus
+widely used, it must be compatible with a variety of commer-
+cially available optical mice. The sensitivity of optical mice is not
+necessarily consistent among models, as some high-performance
+models allow independent adjustment of the x- and y-axis gain
+as needed. To ensure that the provided library is easy to use, its
+rotation axis calculation algorithm should not require estimation
+of the sensitivity of the optical mouse or gain adjustment, i.e., it
+should not depend on differences in endogenous gains. Further-
+more, the distance between the spherical treadmill and optical
+mouse fluctuates constantly, albeit slightly, due to perturbation
+of the spherical treadmill caused by the animal’s gait, etc. Thus,
+the detected values of the optical mouse can be expected to vary
+even when the spherical treadmill rotates in the same direction
+constantly. Therefore, the algorithm for calculating the axis of
+rotation of the spherical treadmill must be stable and unaffected
+by these exogenous gain changes, as well as by endogenous gain
+changes.
+To satisfy the above two requirements, we developed and
+implemented a novel rotation axis calculation algorithm using
+c×2023 Information Processing Society of Japan 3
+IPSJ Transactions on Bioinformatics Vol.16 1–12 (Apr. 2023)
+Fig. 3 Great circle method for calculating the axis of a rotating sphere. A: Rotation axis of the sphere
+A, rotation velocity φ, and tangent vectors of the motions Tn detected by the two optical mice. B:
+Vector Pn is obtained from the outer product of Tn and the position vector of the optical mouse
+Mn . C: The outer product of Pn and Mn yields the pole Qn of the great circle on which A, rests. 
+D: Ais obtained from the outer product of Q1 and Q2. The vertical continuous line on the sphere
+represents “the prime meridian.”
+spherical geometry, i.e., the great circle method. The relation-
+ship between the great circle and pole on the sphere surface can
+be explained as follows. Consider a vector from the center of the
+sphere to any two points on the great circle; the vector obtained
+by the cross-product of the two vectors indicates the direction of
+the pole. This relationship is not only mathematically simple,
+but the reciprocal voting structure of the relationship between the
+great circle and poles in the parameter space allows the neces-
+sary information to be obtained robustly [1], [24], [25], [26], [27].
+Moreover, the great circle algorithm used herein enables more ro-
+bust calculation of the axis of rotation by using only the direction
+of the motion vectors detected by the two optical mice, which are
+gain-independent quantities.
+Specifically, we first obtain the tangent vector Tn (n = 1,2) of
+the motion by normalizing the motion vector Vn obtained from
+each optical mouse by its norm (Fig. 3 A). This makes the fol-
+lowing calculations independent of changes in endogenous and
+exogenous gains.
+Let Mn be the position vector of each optical mouse with re-
+spect to the center Oof the treadmill sphere (white circle in
+Fig. 3). Consider a vector extending from Oby translating the
+tangent vector Tn of the motion. These normalized outer prod-
+ucts (multiplied by the radius r of the spherical treadmill) are
+expressed as:
+Pn = r ·(Mn ×Tn)
+|Mn ×Tn|
+(Fig. 3 B). Pn (Fig. 3, blue circle) is the vector representing the
+pole of the great circle containing the tangent vector Tn of the
+motion when Tn is attached to the position of each optical mouse
+(as in Fig. 3 A) (Step 1).
+Next, the position vector of Pn and the optical mouse is calcu-
+lated from the outer product of Mn as
+Qn = r ·(Mn ×Pn)
+|Mn ×Pn|
+(Fig. 3 C). This Qn (Fig. 2 purple circle) is the pole of the great
+circle containing Pn and Mn, i.e., the pole of the great circle con-
+taining the rotation axis A(Fig. 2 red circle) (Step 2).
+The axis of rotation Aof interest is the intersection of the great
+circle with Q1 as its pole and the great circle with Q2 as its pole.
+Therefore, Ais calculated as their outer product
+A= r ·(Q1 ×Q2)
+|Q1 ×Q2|
+(Step 3; Fig. 3 D). Once Ais obtained, the absolute value of the
+rotational angular velocity ωcan be written as
+|ω|= |Vn|
+sin(cos−1(A· Mn)).
+In the special case in which Q1 and Q2 overlap, such as when
+the great circle containing the axis of rotation Aestimated from
+the motion of each optical mouse overlaps, i.e., when the axis of
+rotation is on the great circle containing M1 and M2 (referred to
+herein as the “singular great circle”), Acannot be calculated cor-
+rectly. In this case, the algorithm detects that the axis of rotation
+is in a singular great circle and computes it in a dedicated manner
+(Fig. A·1; see Appendix A.1). However, given that, in practice,
+animals often move in a straight line, it will often be the case that
+the axis of rotation is near the equatorial plane, i.e., around the
+rim of the bowl. In our system, the two optical mice were ar-
+ranged so that they did not line up in the equatorial plane. With
+this arrangement, the singular great circle will rarely be a problem
+when estimating the axis of rotation for practical purposes.
+The library also included a GetAx function that implemented
+the above great circle algorithm and a GetAxInv function that im-
+plemented the inverse matrix method (see Appendix A.2) [22],
+yielding the required value from among three values of the two
+velocity vectors by inversion. User can select whichever function
+they prefer.
+c×2023 Information Processing Society of Japan 4
+IPSJ Transactions on Bioinformatics Vol.16 1–12 (Apr. 2023)
+2.4 Experiment to Evaluate the Treadmill-rotation Mea-
+surement System
+To evaluate the data acquisition system based on two optical
+mice and algorithm for calculating spherical treadmill rotation
+described above, the spherical treadmill was rotated at various
+rotation axis angles. A step-out-less stepping motor (ASC46AK;
+ORIENTAL MOTOR Co., Ltd., Tokyo, Japan), controlled by an
+Arduino Uno-compatible machine with a CNC shield compatible
+with grbl 1.1, was used to rotate the sphere.
+2.5 Statistical Evaluation of the Distribution of the Esti-
+mated Rotation Axes
+To statistically evaluate whether the real rotation axes esti-
+mated from the optical mouse time series data are within a nar-
+row range, we used the bootstrap method, as described below.
+Pseudo-x and -ytime series data were generated by shuffling the
+time series of the x and y values of the optical mice, respec-
+tively, and the pseudo-rotation axes were calculated 106 times
+using these data. The data were then used to calculate the proba-
+bility that the position of the pseudo-rotation axis was within the
+latitudinal and longitudinal maximum and minimum values of the
+real rotation axis position distribution. The same method was also
+used to evaluate the convergence of the angular distribution of the
+motion vectors measured by each optical mouse.
+3. Results
+The constructed system was capable of sampling optical mouse
+signals at a speed sufficient for practical use. Figure 4 A, B shows
+examples of measured rotations of the spherical treadmill on the
+axis of rotation (N45, W90). In this example, sampling was done
+at an interval of 15 ms. Although sampling at 500 Hz (2 ms),
+which is the upper limit of the optical mouse report rate, was
+possible, a sampling rate of 15 ms was set as the default to obtain
+the largest and most stable optical mouse signal values possible,
+for practical use and to increase the calculation accuracy, based
+on a frame rate of the VR system screen of 60 Hz. Figure 4 C
+shows the sampling interval variability for the data in Fig. 4 A.
+Although there were a few 0.5-ms fluctuations during the 1.2 s of
+measurement, most were within the range of 15.0 ±0.1 ms (mean
+±SD: 15.00 ±0.01 ms), which is considered acceptable for prac-
+tical use.
+The x and yvalues of each optical mouse at 0.2∼0.8 s after the
+start of rotation (Fig. 4 A, B, shaded areas), when rotation was sta-
+ble, were correlated (optical mouse 1, r2 =0.98, n =39, t =41.3,
+p = 8.7 ×10−34; optical mouse 2, r2 = 0.55, n = 39, t = 7.0,
+p = 2.3 ×10−8: Fig. 4 D, E). Even when the spherical treadmill
+rotated at a constant speed, the optical mouse signals fluctuated
+to some extent due to subtle irregularities in the sphere surface.
+However, the correlation of the X and Y values shown in Fig. 4 D,
+E demonstrates that the tangent vector direction obtained from the
+signals of each optical mouse did not change significantly. This
+result validates the great circle method proposed in this study. In
+fact, the great circle method computed the axis of rotation very ro-
+bustly, independent of slight fluctuations in signal values (N46.7
+± 0.3, W91.2 ± 1.1; bootstrap test, p < 10−6, see Methods 2.5)
+(Fig. 4 F).
+Fig. 4 Example of the measurement and axis calculations. A, B: Raw data
+from optical mice 1 (A) and 2 (B); the rotation axis was set at (N45,
+W90). Data in the shaded area between 0.2 and 0.8 s after the start of
+rotation are plotted in D, E, and F. C: Time interval accuracy of the
+data sampling; the rotation time was 1 s. D, E: Correlation between
+the x and y values of the motion vector detected by optical mice 1
+(D) and 2 (E). F: The estimated axis of rotation of the spherical
+treadmill at each time point. Left, spherical plot. In this plot, x > 0,
+x <0, z >0, and z <0 correspond to the eastern, western, northern,
+and southern hemispheres, respectively. Right, Mercator plot. Inset,
+magnified view near the estimated rotation axis.
+The calculation was also stable even as the axis of rotation of
+the spherical treadmill varied: (North Pole), (N60, W90), (N60,
+E0), (N60, E90), (N60, E180), (N45, W90), (N45, E0), (N45,
+E90), (N45, E180), (N20, W90), (N20, E90), (N20, E180) are
+(N87.7 ± 1.2), (N60.6 ± 0.6, W80.2 ± 1.5), (N61.0 ± 0.8, E2.2
+±1.3), (N57.3 ±0.4, E90.1 ±2.2), (N65.1 ±1.2, E179.5 ±1.2),
+(N46.7 ±0.3, W91.2 ±1.1), (N49.4 ±0.6, W0.4 ±0.8), (N44.0
+± 0.7, 89.8 ± 3.6), (N51.3 ± 1.3, E178.2 ± 1.9), (N20.9 ± 0.4,
+W90.7 ± 1.4), (N17.6 ± 0.5, E90.2 ± 2.6), (N19.5 ± 1.2, 179.4
+± 0.6), respectively (Fig. 5). In all cases, the axis calculations
+were extremely stable regardless of the fluctuation of the optical
+mouse signal: (bootstrap test: N60, W90, p < 10−6; N60, E0,
+p =2.1 ×10−5; N60, E90, p <10−6; N60, E180, p <10−6; N45,
+W90, p < 10−6; N45, E0, p < 10−6; N45, E90, p < 10−6; N45,
+E180, p <10−6; N20, W90, p <10−6; N20, E90, p <10−6; N20,
+E180, p < 10−6). The obtained rotation axis positions also re-
+vealed the average absolute values of the differences from the tar-
+get latitude and longitude (2.4 ±1.9 and 1.6 ±2.8, respectively);
+these values were sufficient considering that the accuracy of the
+experimental rotation axis setting was limited to approximately ±
+5◦ at low latitudes.
+c×2023 Information Processing Society of Japan 5
+IPSJ Transactions on Bioinformatics Vol.16 1–12 (Apr. 2023)
+Fig. 5 Estimated axes of rotation of the spherical treadmill at various rotation axes. The data intervals
+used to analyze were as in Fig. 4 F. Note that the spherical plot is rotated 90◦ to the west from
+Fig. 4 F. In this plot, x > 0, x < 0, z > 0, and z < 0 correspond to the eastern, western, northern,
+and southern hemispheres, respectively. Inset, magnified view near the estimated rotation axis.
+Scale is 5◦.
+The relative gains of the two optical mice can vary. Exogenous
+gain changes can arise, for example, due to fluctuations in op-
+tical mouse signals resulting from fluctuations in reflected light,
+such as those caused by changes in the position of the spheri-
+cal treadmill due to an animal walking, etc. Endogenous gain
+variation can occur due to differences in model and gain settings.
+The robustness of the two optical mice against such relative gain
+changes was examined in this study by expanding (150%) and
+contracting (50%) the signal value of optical mouse 2 (Fig. 6).
+The great circle method proposed in this study was then com-
+pared with a naive method, i.e., the inverse matrix method [22]
+(Appendix A.2) for the example used in Fig. 4 (N45, W90). When
+neither was scaled up or down, the two methods calculated the
+same rotation axis (Fig. 6 B, E). Since the great circle method
+obtains tangent vectors by ignoring the norms of the motion vec-
+tors detected in each optical mouse, it produced exactly the same
+axis calculation values when the signal values of optical mouse
+2 were reduced (Fig. 6 A) or expanded (Fig. 6 C) (N46.7 ± 0.3,
+W91.2 ±1.1). By contrast, in the inverse matrix method, which
+uses the motion vector values directly, a drift in the calculated
+axis positions occurred as they were reduced or expanded (50%:
+N45.7 ±0.4, W109.2 ±1.2), (100%: N46.8 ±0.3, W92.7 ±2.6),
+(150%: N45.2 ± 0.5, W75.8 ± 3.6) (Fig. 6 D, F). These means
+and SDs are summarized in Fig. 6 G to show the differences in
+the estimated rotation axis positions.
+In experiments that primarily assume forward motion of the
+animal, a system using a single optical mouse is used to detect
+the spherical treadmill motion [28]. Since the information ob-
+tained from a single optical mouse is two-dimensional, the ro-
+tational motion of the spherical treadmill, which is represented
+in three dimensions, cannot be accurately obtained. Therefore,
+the assumption that the axis of rotation is on the equatorial plane
+is used [23]. Figure 7 shows how the motion of an animal as-
+sumed to be placed at the North Pole is calculated using the
+one-optical-mouse method. The rotation of the spherical tread-
+mill when the animal is moving forward (toward the date line)
+is clockwise to the axis (N0, W90). Including this case, when
+the axes of rotation are on the W90 line, the motion vector at the
+north pole is always in the direction of the date line, as calcu-
+lated using the great circle method, and the amplitude decreases
+as the latitude of the rotation axis increases. If we denote the an-
+gle and amplitude combination of the motion vector in the case of
+c×2023 Information Processing Society of Japan 6
+IPSJ Transactions on Bioinformatics Vol.16 1–12 (Apr. 2023)
+Fig. 6 A–F: Example comparison of the axis calculation between the great circle method (A–C) and the
+inverse matrix method (D–F). Plots for optical mouse 2 gain: 50% (A, D), 100% (B, E), 150%
+(C, F). The data and format used are the same as in Fig. 4 F; that is, Fig. 6 B is identical to Fig. 4 F
+except for the inset. In the spherical plot, x >0, x <0, z >0, and z <0 correspond to the eastern,
+western, northern, and southern hemispheres, respectively. G: The mean ± SD of the computed
+rotation axes. Left, latitude. Right, longitude.
+Fig. 7 Examples of estimated motion vectors at the North Pole. A: Rotation
+axes on the W90 line. B: Axes on the W60 line. Left column, motion
+vectors estimated using the great circle method. Right column, mo-
+tion vectors estimated using the one-optical-mouse method. Arrows,
+motion vectors. The upward direction is straight ahead, i.e., motion
+in the opposite direction of optical mouse 1.
+(N0, W90) as (0.0◦, 1.00), then (N15, W90), (N30, W90), (N45,
+W90), and (N60, W90) are (0.0◦, 0.97), (0.0◦, 0.87), (0.0◦, 71),
+and (0.0◦, 0.50), respectively (Fig. 7 A, left). The one-optical-
+mouse method correctly calculates the motion vector for (N0,
+W90) as (0.0◦, 1.00); however, as the latitude of the rotation
+axis increases, the calculated motion vectors for (N15, W90),
+(N30, W90), (N45, W90), and (N60, W90) are (−10.3◦, 0.97),
+(−16.5◦, 0.97), (−21.0◦, 0.87), and (−24.9◦, 0.71), respectively
+(Fig. 7 A, right), which is highly inaccurate. That is, when the
+latitude of the rotation axis is greater than 0, the calculated direc-
+tion shows rightward rotation when the actual rotation is to the
+left, and the calculated amplitude increases when the actual am-
+plitude decreases. A similar trend is observed when the axes of
+rotation are at W60 (Fig. 7 B). When the axis of rotation is on the
+equator, both methods can accurately calculate the motion vector
+at the North Pole as (30.0◦, 1.00). As the latitude of the rota-
+tion axis increases to (N15, W60), (N30, W60), (N45, W60), and
+(N60, W60), the actual motion vectors are (30.0◦, 0.97), (30.0◦,
+0.87), (30.0◦, 0.71), and (30.0◦, 0.50), respectively (Fig. 7 B, left);
+however, the one-optical-mouse method yields values of (11.1◦,
+1.24), (−1.5◦, 1.48), (−10.8◦, 1.67), (−18.5◦, 1.78), respectively
+(Fig. 7 B, right).
+The optical mouse data used until this point were sampled at
+15 ms. The motion vectors detected for optical mice 1 and 2 when
+sampled at 2 ms are shown in Fig. 8 A and B, respectively. Com-
+c×2023 Information Processing Society of Japan 7
+IPSJ Transactions on Bioinformatics Vol.16 1–12 (Apr. 2023)
+Fig. 8 Example of the measurement and axis calculation using the 2-ms
+sampling data. A, B. Raw data from optical mice 1 (A) and 2 (B).
+The rotation axis was set at (N45, W90). The rotation time was 1 s.
+Data in the shaded area 0.2–0.28 s after the start of rotation are plot-
+ted in C and D and match the number of data points in Fig. 4. C. The
+estimated rotation axis at each time point calculated using the great
+circle method. D. The same plot obtained using the inverse matrix
+method. Left, spherical plot. In this plot, x > 0, x < 0, z > 0,
+and z <0 correspond to the eastern, western, northern, and southern
+hemispheres, respectively. Right, Mercator plot. Inset, magnified
+view near the estimated rotation axis.
+pared with Fig. 4 A and B, the x and y values for each mouse
+were not only smaller, while maintaining a larger and smaller re-
+lationship, but also showed larger variability. Reflecting this, the
+results of the rotation axis estimation were (N88.9 ±3.6, W47.4
+±2.5), and the latitudinal and longitudinal SDs were 3.3 and 7.4
+times larger, respectively, than those in the 15-ms sampling case
+(Fig. 8 B). However, the inverse matrix method yielded an esti-
+mated axis of rotation of (N84.4 ±12.9, W46.7 ±3.7), with lat-
+itudinal and longitudinal SDs 11.8 and 10.9 times larger, respec-
+tively, than those of the great circle method obtained with 15-ms
+sampling. Thus, the great circle method provides good estimates
+of the rotation axes of the spherical treadmill.
+4. Discussion
+In this study, we constructed a system to acquire the rotation
+of a spherical treadmill at high speed in mouse VR using two op-
+tical mice connected to a Windows device. A newly developed
+great circle method was then used to calculate the sphere rotation
+axis robustly. The constructed system achieved a sufficiently fast
+signal acquisition time for practical use. In a comparison with
+the conventional method, the proposed great circle method com-
+puted the axis of rotation more robustly in various experimen-
+tal situations. The open source availability of the multiple opti-
+cal mouse signal processing library will encourage measurements
+of brain activity in behaving animals, thereby further elucidating
+brain function under conditions in which local and global neural
+activities strongly interact.
+In our study, a program that accesses RawInputAPI, a Win-
+dows API, was implemented to acquire signals from multiple op-
+tical mice at high speed. Sampling was possible even at 500 Hz
+(2 ms), which is the upper limit of the reported rate of the op-
+tical mice used, but the signal values were smaller in that case.
+To obtain the largest and most stable optical mouse signal val-
+ues possible, the default sampling rate was set to 15 ms (67 Hz).
+The time scale of Ca2+ transient [28], [29], [30], [31], [32] and
+flavin fluorescence [10], [11], [33], [34] signals are approximately
+1 s. Hence, the imaging frame rate of systems that perform Ca2+
+imaging during VR is much slower than 67 Hz and does not ex-
+ceed 16 Hz (64 ms) [14], [16]. In addition, the refresh rate of
+the video projection system (HC3000; Mitsubishi, Tokyo, Japan)
+used in those VR systems is approximately 60 Hz [15], [35].
+Thus, we foresee no major problems with defaulting to acquir-
+ing the optical mouse signal at a report rate of 15 ms (67 Hz),
+which is faster than those of the previous systems. Moreover, our
+system can handle the fastest report rate of 2 ms for an optical
+mouse, which should compensate for any issues.
+We also proposed a novel algorithm to robustly calculate the
+sphere rotation axis. The proposed great circle algorithm was
+superior to the naive inverse matrix method, in that the former
+can robustly compute the axis of rotation regardless of differ-
+ences in the gain of individual optical mice and the variations
+in signal values caused by small changes in the distance between
+the spherical treadmill and optical mouse due to animal move-
+ment, etc. (Fig. 6). Nonetheless, our method has a larger range
+of singularities that are more difficult to calculate than when us-
+ing the inverse matrix method. That is, it has a singular great
+circle that passes through the positions of the two optical mice,
+in which case the rotation axis cannot be uniquely determined.
+To address this problem, we devised an algorithm that detects the
+axis of rotation on a singular great circle and then performs an-
+other process (Fig. A·1; see Appendix A.1), and did not align the
+two optical mice on the equator of the spherical treadmill. The
+latter measure was feasible given that, in the VR environment,
+animals often move in a straight line, i.e., the axis of rotation is
+often in the equatorial plane. Our robust method for calculating
+the axis of rotation can be expected to reduce the need for fine-
+tuning custom-made VR systems developed for small animals,
+while yielding data with less variability.
+A commercially available mouse VR system that uses two op-
+tical mice can be found in Refs. [13], [36], [37]. However, one
+study [13] offered no description, and another study [37] provided
+only the brief description that “Ball rotations around the medio-
+lateral axis were used for forward and backward movement along
+the running direction of the mouse, whereas ball rotations around
+the anteroposterior and dorsoventral axes were used in combi-
+nation to change the mouse’s running direction.” Therefore, the
+existing literature does not clarify the details of the calculation
+of treadmill motion. We presume that the existing approach does
+not calculate the rotation axis of the spherical treadmill, as in our
+method and the inverse matrix method; thus, that system is un-
+likely to evaluate the rotational motion accurately.
+The most common use of VR systems for mice is imaging neu-
+ral activity during navigation [15], [16], [38], [39], [40], in which
+c×2023 Information Processing Society of Japan 8
+IPSJ Transactions on Bioinformatics Vol.16 1–12 (Apr. 2023)
+case usage of a single optical mouse is possible [16]. However,
+robust, accurate estimation of the rotation of a spherical treadmill
+using two optical mice, as in this study, would greatly expand
+the range of experiments possible. As examples, we can con-
+sider adaptive learning [41], [42], [43], which has a long history
+of research, and predictive coding [44], [45], which has become a
+topic of interest in recent years. Prism adaptation, as it has long
+been known, is an adaptive learning phenomenon in which the
+task is to perform reaching movements under conditions in which
+the visual environment is modulated by prism glasses. While the
+subject initially fails to reach the target, he or she eventually be-
+comes able to do so. Since prism adaptation does not occur in pa-
+tients with cerebellar disease, the cerebellum has been thought to
+play an important role in this adaptive learning, i.e., comparison
+of the obtained visual image with the outcome predicted by move-
+ment and adaptive modification of the movement [46], [47], [48].
+In recent years, more modern theories [44], [45] and experimen-
+tal techniques [49], [50] have led to the idea that modulation is
+caused by active prediction and its errors in wide areas of the
+brain [51], [52], [53], [54]. For example, Kim et al. observed
+changes in cellular activities when the VR gain (i.e., the ratio
+of the mouse’s forward motion to the associated visual image
+shift) was abruptly changed to produce a mismatch between pre-
+dicted and actual VR motion, and they confirmed that midbrain
+dopamine cell activity encoded the time difference signal [55].
+The accurate measurement of two-dimensional animal motion
+proposed in this study could be used to conduct a wider range of
+experiments on predictive coding. For example, it is possible to
+verify the effect of rotation rate modulation on locomotion, such
+as walking in a straight line while showing a gentle left curve in
+the VR environment. Furthermore, unlike prisms, the correspon-
+dence between stimulus and motion can be continuously modu-
+lated, and the degree of adaptive learning quantified. With the
+development of more realistic VR systems, including the inclu-
+sion of tactile sensation [17] and force sensation [56], a broader
+range of experiments will be possible.
+The capability to present a variety of paths one after another is
+another advantage of the VR system that is not possible in ex-
+periments using real devices. For example, if a mouse learns
+a visually guided right rotation → left rotation → right rotation
+sequence, and then the visual cue is removed, can the mouse
+quickly perform the same sequence guided by memory? Also,
+do mice show changes in cortical activities from premotor to sup-
+plementary motor areas similar to those observed in monkeys [3]?
+By detecting these changes, can novel areas be identified in mice?
+Can mice perform different sequential behaviors one after an-
+other? Even if they cannot switch behaviors like monkeys, how
+long does it take them to learn? To address this last question in
+particular, using our system to accurately measure motion during
+rotation, it is possible to quantify the predictive behavior associ-
+ated with learning to evaluate whether the mouse overshoots and
+rotates when learning has not progressed or, conversely, whether
+the mouse rotates smoothly when learning has progressed.
+Although artificial neural networks have attracted public atten-
+tion in recent years, it is a major mission of experimental neuro-
+science to show that they still differ substantially from the actual
+brain, especially in terms of the highly complex functional struc-
+ture of the brain. For example, the primary visual cortex of pri-
+mates has a functional structure (or retinotopy) that corresponds
+to locations in the visual field, in addition to other functional
+maps of modalities such as ocular dominance, color, orientation
+of contours, and spatial frequency [57], [58]. In other words, the
+primary visual cortex has high-dimensional maps embedded in its
+three-dimensional structure. If each area of the cortex has com-
+mon properties, it is not unreasonable to assume that other ar-
+eas, especially motor-related areas, also have such higher dimen-
+sional maps. The involvement of many researchers and efficient
+functional mapping is essential to reveal such complex functional
+structures. To this end, relatively inexpensive and simple methods
+such as endogenous signal imaging that can easily map functions
+over a few millimeters squared, as well as VR systems that enable
+imaging during animal movement, are indispensable. Contribu-
+tions by many research groups to the construction of inexpensive,
+simple mouse VR systems will promote brain research and help
+elucidate the functional structure of the brain.
+Acknowledgments This work was supported by JSPS KAK-
+ENHI Grant Number JP16H06276 (Platform of Advanced Ani-
+mal Model Support), 17K07060, 20K07726 (Kiban C), MEXT
+KAKENHI Grant Number 20H05478, 22H04780 (Hyper–
+Adaptability) and Japan Agency for Medical Research and De-
+velopment (AMED) under Grant Number JP18dm0207051.
+The authors declare no competing financial interests.
+References
+[1] Sakamoto, K.: Brain Science of Creativity: Beyond the Complex Sys-
+tems Theory of Biological Systems, University Tokyo Press, Tokyo
+(2019).
+[2] Brodmann, K.: Vergleichende Lokalisationslehre der Grosshirnrinde,
+Johann Ambrosius Barth, Leipzig (1909).
+[3] Mushiake, H., Inase, M. and Tanji, J.: Neuronal Activity in the Pri-
+mate Premotor, Supplementary, and Precentral Motor Cortex during
+Visually Guided and Internally Determined Sequential Movements, J.
+Neurophysiol., Vol.66, pp.705–718 (1991).
+[4] Mastuzaka, Y., Aizawa, H. and Tanji, J.: A Motor Area Rostral to
+the Supplementary Motor Area (Presupplementary Motor Area) in the
+Monkey: Neuronal Activity during a Learned Motor Task, J. Neuro-
+physiol., Vol.68, pp.653–662 (1992).
+[5] Matsuzaka, Y., Akiyama, T., Tanji, J. and Mushiake, H.: Neuronal
+Activity in the Primate Dorsomedial Prefrontal Cortex Contributes to
+Strategic Selection of Response Tactics, Proc. Natl. Acad. Sci. U.S.A.,
+Vol.109, pp.4633–4638 (2012).
+[6] Shima, K., Tanji, J.: Neuronal Activity in the Supplementary and Pre-
+supplementary Motor Areas for Temporal Organization of Multiple
+Movements, J. Neurophysiol., Vol.84, pp.2148–2160 (2000).
+[7] Bonhoeffer, T. and Grinvald, A.: Iso-Orientation Domains in Cat Vi-
+sual Cortex are Arranged in Pinwheel-Like Patterns, Nature, Vol.353,
+pp.429–431 (1991).
+[8] Ota, K., Oisi, Y., Suzuki, T., Ikeda, M., Ito, Y., Ito, T., Uwamori,
+H., Kobayashi, K., Kobayashi, M., Odagawa, M., Matsubara, C.,
+Kuroiwa, Y., Horikoshi, M., Matsushita, J., Hioki, H., Ohkura, M.,
+Nakai, J., Oizumi, M., Miyawaki, A., Aonishi, T., Ode, T. and
+Murayama, M.: Fast, Cell-Resolution, Contiguous-Wide Two-Photon
+Imaging to Reveal Functional Network Architectures across Multi-
+Modal Cortical Areas, Neuron, Vol.109, pp.1810–1824 (2021).
+[9] Yu, C.H., Stirman, J.N., Yu, Y., Hira, R. and Smith, S.L.: Diesel2p
+Mesoscope with Dual Independent Scan Engines for Flexible Capture
+of Dynamics in Distributed Neural Circuitry, Nat. Communications,
+Vol.12, 6639 (2021).
+[10] Shibuki, K., Hishida, R., Murakami, H., Kudoh, M., Kawaguchi, T.,
+Watanabe, M., Watanabe, S., Kouuchi, T. and Tanaka, R.: Dynamic
+Imaging of Somatosensory Cortical Activities in the Rat Visualized by
+Flavoprotein Autofluorescence, J. Physiol. (Lond.), Vol.549, pp.919–
+927 (2003).
+[11] Yanagawa, Y., Takasu, K., Osanai, H. and Tateno, T.: Salicylate-
+c×2023 Information Processing Society of Japan 9
+IPSJ Transactions on Bioinformatics Vol.16 1–12 (Apr. 2023)
+Induced Fre-quency-Map Reorganization in Four Subfields of the
+Mouse Auditory Cortex, Hearing Res., Vol.351, 98e115 (2017).
+[12] Tsukano, H, Horie, M., Hishida, H., Takahashi, K., Takebayashi, H.
+and Shibuki, K.: Quantitative Map of Multiple Auditory Cortical Re-
+gions with a Stereotaxic Fine-Scale Atlas of the Mouse Brain, Sci.
+Reports, Vol.6, 22315 (2016).
+[13] H ̈olscher, C., Schnee, A., Dahmen, H., Setia, L. and Mallot, H.A.:
+Rats are Able to Navigate in Virtual Environments, J. Exp. Biol.,
+Vol.208, No.3, pp.561–569 (2005).
+[14] Dombeck, D.A., Khabbaz, A.N., Collman, F., Adelman, T.L. and
+Tank, D.W.: Imaging Large-Scale Neural Activity with Cellular Res-
+olution in Awake, Mobile Mice, Neuron, Vol.56, No.1, pp.43–57
+(2007).
+[15] Harvey, C.D., Collman, F., Dombeck, D.A. and Tank, D.W.: Intracel-
+lular Dynamics of Hippocampal Place Cells During Virtual Naviga-
+tion, Nature, Vol.461, No.7266, pp.941–946 (2009).
+[16] Dombeck, D.A., Harvey, C.D., Tian, L., Looger, L.L. and Tank, D.W.:
+Functional Imaging of Hippocampal Place Cells at Cellular Resolution
+During Virtual Navigation, Nat. Neurosci., Vol.13, No.11, pp.1433–
+1440 (2010).
+[17] Sofroniew, N.J., Cohen, J.D., Lee, A.K. and Svoboda, K.: Natural
+Whisker-Guided Behavior by Head-Fixed Mice in Tactile Virtual Re-
+ality, J. Neurosci., Vol.34, No.29, pp.9537–9550 (2014).
+[18] Seelig, J.D., Chiappe, M.E., Lott, G.K., Dutta, A., Osborne, J.E.,
+Reiser, M.B. and Jayaraman, V.: Two-Photon Calcium Imaging from
+Head-Fixed, Drosophila during Optomotor Walking Behavior, Nature
+Methods, Vol.7, No.6, pp.535–540 (2010).
+[19] Moore, R.J.D., Taylor, G.J., Paulk, A.C., Pearson, T., van Swinderen,
+B. and Srinivasan, M.V.: FicTrac: A Visual Method for Tracking
+Spherical Motion and Generating Fictive Animal Paths, J. Neurosci.
+Methods, Vol.225, pp.106–119 (2014).
+[20] available from 〈http://model.umin.jp〉.
+[21] available from 〈https://www.lbc.mech.tohoku.ac.jp/physio-sien/〉.
+[22] Lee, K-M. and Zhou, D.: A Real-Time Optical Sensor for Simultane-
+ous Measurement of Three-DOF Motions, IEEE/ASME Trans. Mecha-
+tronics., Vol.9, No.3, pp.499–507 (2014).
+[23] Katayama, N., Hidaka, K., Karashima, A. and Nakao, M.: Develop-
+ment of an Immersive Virtual Reality System for Mice, Proc. SICE
+Annu. Conf., pp.791–794 (2012).
+[24] Sugie, Y., Kawakami, S., Sakamoto, K. and Yano, M.: A Cell Model
+for Detecting the Time-to-Passage of a Line, Annu. Conf. Jpn. Neu.
+Netw. Soc., P2–08 (2006).
+[25] Sakamoto, K., Ohori, A., Sugie, Y., Sasaki, H., Kawakami, S. and
+Yano, M.: A Model for Shape Vision in the Cortical Area V4 Us-
+ing Great Circle/Small Circle Transformation, Annu. Conf. Jpn. Neu.
+Netw. Soc., P1–06 (2006).
+[26] Sakamoto, K., Kohama, T., Sugie, Y., Kawakami, S., Hashimoto, M.
+and Yano, M.: An Area CIP Model Presuming the 3D Surface Ori-
+entation of a Line Drawing using Polar Transformation, Annu. Conf.
+Jpn. Neu. Netw. Soc., P3–02 (2008).
+[27] Sakamoto, K., Kumada, T. and Yano, M.: A Computational Model
+that Enables Global Amodal Completion Based on V4 Neurons, Lec.
+Note Comput Sci., Vol.6443, pp.9–16 (2010).
+[28] Rajasethupathy, P., Sankaran, S., Marshel, J.H., Kim, C.K., Ferenczi,
+Lee, S.Y., Berndt, A., Ramakrishnan, C., Jaffe, A., Lo, M., Liston, C.
+and Deisseroth, K.: Projections from Neocortex Mediate Top-Down
+Control of Memory Retrieval, Nature, Vol.526, pp.653–659 (2015).
+[29] Tallini, Y.N., Ohkura, M., Choi, B.R., Ji, G., Imoto, K., Doran, R.,
+Lee, J., Plan, P., Wilson, J., Xin, H.B., Sanbe, A., Gulick, J., Mathai,
+J., Robbins, J., Salama, G., Nakai, J. and Kotlikoff, M.I.: Imaging
+Cellular Signals in the Heart In Vivo: Cardiac Expression of the
+High-Signal Ca2+ Indicator GCaMP2, Proc. Natl. Acad. Sci. U.S.A.,
+Vol.103, pp.4753–4758 (2006).
+[30] Ohkura, M., Sasaki, T., Kobayashi, C., Ikegaya, Y. and Nakai, J.:
+An Improved Genetically Encoded Red Fluorescent Ca2+ Indicator
+for Detecting Optically Evoked Action Potentials, PLoS One, Vol.7, 
+e39933 (2012).
+[31] Ohkura, M., Sasaki, T., Sadakari, J., Gengyo-Ando, K., Kagawa-
+Nagamura, Y., Kobayashi, C., Ikeaya, Y. and Nakai, J.: Genet-
+ically Encoded Green Fluorescent Ca2+ Indicators with Improved
+Detectability for Neuronal Ca2+ Signals, PLoS One, Vol.7, e51286
+(2012).
+[32] Chen, T.W., Wardill, T.J., Sun, Y., Pulver, S.R., Renninger, S.L.,
+Baohan, A., Schreiter, E.R., Kerr, R.A., Orger, M.B., Jayaraman, V.,
+Looger, L.L., Svoboda, K. and Kim, D.S.: Ultrasensitive Fluorescent
+Proteins for Imaging Neuronal Activity, Nature, Vol.499, pp.295–300
+(2013).
+[33] Honma, Y., Tsukano, H., Horie, M., Ohshima, S., Tohmi, M., Kubota,
+Y., Takahashi, K., Hishida, R., Takahashi, S. and Shibuki, K.: Audi-
+tory Cortical Areas Activated by Slow Frequency-Modulated Sounds
+in Mice, PLoS One, Vol.8, e68113 (2013).
+[34] Baba, H., Tsukano, H., Hishida, R., Takahashi, K., Horii, A.,
+Takahashi, S. and Shibuki, K.: Auditory Cortical Field Coding Long-
+Lasting Tonal Offsets in Mice, Sci. Reports, Vol.6, 34421 (2016).
+[35] available from 〈https://dl.mitsubishielectric.co.jp/dl/ldg/wink/ssl/
+wink doc/m contents/wink/D MENT DOC/manual hc3000.pdf〉.
+[36] available from 〈https://www.phenosys.com/products/virtual-reality/
+jetball-tft/?cn-reload ed=1〉.
+[37] Schmidt-Hieber, C. and H ̈ausser, M.: Cellular Mechanisms of Spatial
+Navigation in the Medial Entorhinal Cortex, Nat. Neurosci., Vol.16,
+pp.325–331 (2013).
+[38] Harvey, C.D., Coen, P. and Tank, D.W.: Choice-Specific Sequences
+in Parietal Cortex During a Virtual-Navigation Decision Task, Nature,
+Vol.484, pp.62–68 (2012).
+[39] Aghajan, Z.M., Acharya, L., Moore, J.J., Cushman, J.D., Vuong, C.
+and Mehta, M.R.: Impaired Spatial Selectivity and Intact Phase Pre-
+cession in Two-Dimensional Virtual Reality, Nat. Neurosci., Vol.18,
+pp.121–128 (2015).
+[40] Driscoll, L.N., Pettit, N.L., Minderer, M., Chettih, S.N. and Harvey,
+C.D.: Dynamic Reorganization of Neuronal Activity Patterns in Pari-
+etal Cortex, Cell, Vol.170, pp.986–999 (2017).
+[41] Marr, D.: A Theory of Cerebellar Cortex, J. Physiol. (Lond.), Vol.202,
+pp.437–470 (1969).
+[42] Ito, M.: Neurophysiological Aspects of the Cerebellar Motor Control
+System, Intl. J. Neurol., Vol.7, pp.162–176 (1970).
+[43] Albus, J.S.: A Theory of Cerebellar Functions, Math. Biosci., Vol.10,
+pp.25–61 (1971).
+[44] Friston, K.: A Theory of Cortical Responses, Philos. Trans. R. Soc.
+Lond. B Biol. Sci., Vol.360, pp.815–836 (2005).
+[45] Keller, G.B. and Mrsic-Flogel, T.D.: Predictive Processing: A Canon-
+ical Cortical Computation, Neuron, Vol.100, pp.424–435 (2018).
+[46] Weiner, M.J., Hallett, M. and Funkenstein, H.H.: Adaptation to Lat-
+eral Displacement of Vision in Patients with Lesions of the Central
+Nervous System, Neurol., Vol.33, pp.766–772 (1983).
+[47] Martin, T.A., Keating, J.G., Goodkin, H.P., Bastian, A.J. and Thach,
+W.T.: Throwing while Looking through Prisms I. Focal Olivocerebel-
+lar Lesions Impair Adaptation, Brain, Vol.119, pp.1183–1198 (1996).
+[48] Baizer, J.S., Kralj-Hans, I. and Glickstein, M.: Cerebellar Lesions
+and Prism Adaptation in Macaque Monkeys, J. Neurophysiol., Vol.81,
+pp.1960–1965 (1999).
+[49] Huang, K.H., Rupprecht, P., Frank, T., Kawakami, K., Bouwmeester,
+T. and Friedrich, R.W.: A Virtual Reality System to Analyze Neu-
+ral Activity and Behavior in Adult Zebrafish, Nat. Methods, Vol.17,
+pp.343–351 (2020).
+[50] Torigoe, M., Islam, T., Kakinuma, H., Fung, C.C.A., Isomura, T.,
+Shimazaki, H., Aoki, T., Fukai, T. and Okamoto, H.: Zebrafish Capa-
+ble of Generating Future State Prediction Error Show Improved Active
+Avoidance Behavior in Virtual Reality, Nat. Communications, Vol.12,
+5712 (2021).
+[51] Taylor, J.A. and Ivry, R.B.: Cerebellar and Prefrontal Cortex Contri-
+butions to Adaptation, Strategies, and Reinforcement Learning, Prog.
+Brain Res., Vol.210, pp.217–253 (2014).
+[52] McDougle, S.D., Ivry, R.B. and Taylor, J.A.: Taking Aim at the Cogni-
+tive Side of Learning in Sensorimotor Adaptation Tasks, Trends Cogn.
+Sci., Vol.20, No.7, 535–544 (2016).
+[53] Panico, F., Fleury, L., Trojano, L. and Rossetti, Y.: Prism Adaptation
+in M1, J. Cogn. Neurosci., Vol.33, No.4, pp.563–573 (2020).
+[54] Panico, F., Rossetti, Y. and Trojano, L.: On the Mechanisms Un-
+derlying Prism Adaptation: A Review of Neuro-Imaging and Neuro-
+Stimulation Studies, Cortex, Vol.123, pp.57–71 (2020).
+[55] Kim, H.G.R., Malik, A.N., Mikhael, J.G., Bech, P., Tsutsui-Kimura,
+I., Sun, F., Zhang, Y., Li, Y., Watabe-Uchida, M., Gershman, S.J.
+and Uchida, N.: A Unified Framework for Dopamine Signals across
+Timescales, Cell, Vol.183, pp.1600–1616 (2020).
+[56] Katayama, N., Nakao, M., Tanaka, T., Osanai, M. and Mushiake,
+H.: Multimodal Functional Analysis Platform: 3. Spherical Tread-
+mill System for Small Animals in Optogenetics, Adv. Exp. Med.
+Biol., Yawo, H., Kandori, H., Koizumi, A. and Kageyama, R. (Eds.),
+Vol.1293, pp.493–500 (2021).
+[57] Livingstone, M.S. and Hubel, D.H.: Anatomy and Physiology of
+a Color System in the Primate Visual Cortex, J. Neurosci., Vol.4, 
+pp.309–356 (1984).
+[58] Hubel, D.H.: Eye, Brain, and Vision, Scientific American Library,
+New York (1983).
+c×2023 Information Processing Society of Japan 10
